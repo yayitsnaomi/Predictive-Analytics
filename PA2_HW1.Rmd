@@ -1,0 +1,347 @@
+---
+title: 'Predictive Analytics 2: HW 1 - Naomi Kaduwela'
+output:
+  html_notebook: default
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+```{r p, echo=FALSE, fig.cap="Q1", out.width = '100%'}
+#Problem 1
+knitr::include_graphics("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/Q1.png")
+
+```
+
+
+```{r p1, echo=FALSE, fig.cap="Q1", out.width = '100%'}
+
+knitr::include_graphics("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/problem1.jpg")
+
+```
+
+```{r p2, echo=FALSE, fig.cap="Q1", out.width = '100%'}
+#Question 2
+knitr::include_graphics("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/Q2.png")
+
+knitr::include_graphics("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/problem2.jpg")
+
+```
+
+```{r}
+#Problem 2 
+#a.)
+rm(list = ls())
+velocity <- read.csv("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/HW1data.csv", stringsAsFactors = FALSE)
+velocity <- velocity[,-c(3,4,5)]
+
+#Calculate Y prime = 1/y
+velocity$yprime<-NULL
+velocity$yprime <- with(velocity$yprime, 1/velocity$y)
+
+#Calculate x prime = 1/x
+velocity$xprime<-NULL
+velocity$xprime <- with(velocity$xprime, 1/velocity$x)
+
+#plot linear model of yprime base don xprime
+linearModel <- lm(velocity$yprime ~ velocity$xprime, data=velocity)  # build linear regression model on full data
+
+#Calculate Betas
+B0 <- linearModel$coefficient[1]
+B1 <- (linearModel)$coefficient[2]
+paste("Beta 0= ", B0, "Beta 1= ", B1)
+
+#Calculate Gammas using Betas
+G0 <- 1/B0 #G0 # 29.62201 
+G1 <-as.numeric( B1/B0 ) #G1 # 13.44881 
+
+paste("Gamma 0 = ", G0, "Gamma 1 = ", G1)
+
+```
+
+```{r}
+#Problem 2
+#b.)
+#nlm()
+fn <- function(p) {yhat<-(p[1]*velocity$x)/(p[2]+velocity$x);
+sum((velocity$y-yhat)^2)} #minimize sum or error squared
+out<-nlm(fn,p=c(G0,G1),hessian=TRUE) #plug in Gamma estimates for Beta linear model
+theta<-out$estimate  
+#  p1        p2 
+#28.13688 12.57428
+paste("nlm() theta least squares esimates: ", theta[1], theta[2])
+
+#nls()
+x1<- velocity$x
+y <-velocity$y
+fn2 <- function(x1,p) (p[1]*velocity$x)/(p[2]+velocity$x)
+out2<-nls(y~fn2(x1,p),start=list(p=c(G0,G1)),trace=TRUE)
+nlsEstimates <- summary(out2) #Least Squares Estimates:
+#p1  28.1370  
+#p2  12.5745
+paste("nls() least squares esimates: ", nlsEstimates$coefficients[1], nlsEstimates$coefficients[2])
+
+```
+
+```{r p3, echo=FALSE, fig.cap="Q1", out.width = '100%'}
+#Question 3
+knitr::include_graphics("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/Q3.png")
+```
+
+
+
+```{r}
+#Problem 3
+#a.) Fisher Information Matrix and covariance matrix of gamma on nlm()
+
+MSE <- out$minimum/(length(velocity$y) - length(theta)) #estimate of the error variance
+InfoMat<-out$hessian/2/MSE  #observed information matrix using nlm() out 
+CovTheta<-solve(InfoMat)
+SE<-sqrt(diag(CovTheta))  
+SEnlm<-sqrt(diag(CovTheta))  #standard errors of parameter estimates
+paste("Standard Error: ", SEnlm[1], SEnlm[2]) 
+#       p1        p2 
+#0.7418084 0.7795476
+
+
+```
+
+```{r}
+#Problem 3
+#b.) Covariance nls()
+covariance <- vcov(out2)
+
+#Standard Error nls()
+SEnls <- sqrt(diag(covariance)) #SE = square root of diagonals in covariance matrix of parameter estimates 
+paste("standard error nls(): ", SEnls[1], SEnls[2])
+#       p1        p2 
+#0.7279790 0.7630534 
+
+```
+3b) The results are similar (SEnlm for comparison : 0.7418084 0.7795476) but the standard error in nlm() is estimated higher for both gammas.
+
+```{r}
+#Problem 3
+#c.) Confidence Interval nlm
+
+CIlowerbound1 <- theta[1]-1.96*SEnlm[1] 
+CIupperbound1 <- theta[1]+1.96*SEnlm[1] 
+
+CIlowerbound2<- theta[2]-1.96*SEnlm[2] 
+CIupperbound2 <- theta[2]+1.96*SEnlm[2] 
+
+paste("nlm CI parameter 1: [ ",CIlowerbound1, " , ", CIupperbound1, "]")
+paste("nlm CI parameter 2: [ ",CIlowerbound2, " , ", CIupperbound2, "]")
+
+
+confidenceInterval_default <- confint.default(out2)
+
+paste("nls Default CI parameter 1: [ ",confidenceInterval_default[1], " , ", confidenceInterval_default[3], "]")
+paste("nls Deafult CI parameter 2: [ ",confidenceInterval_default[2], " , ", confidenceInterval_default[4], "]")
+
+```
+3c.) CI for nlm() vs nls() is similar, but nlm is wider, as the SE for nlm was larger as noted in 3b.
+
+```{r p4, echo=FALSE, fig.cap="Q1", out.width = '100%'}
+#Question 4
+knitr::include_graphics("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/Q4.png")
+```
+
+
+```{r}
+#Problem 4
+#a.)
+library(boot)   #need to load the boot package
+#MLC <-read.table("MLC.csv",sep=",",header=TRUE)
+set.seed(123)
+MLC <- velocity
+MLCfit<-function(Z,i,theta0) {
+   Zboot<-Z[i,]
+   x<-Zboot[[2]];y<-Zboot[[1]]
+   fn <- function(p) {yhat<-(p[1]*x)/(p[2]+x); sum((y-yhat)^2)} 
+   out<-nlm(fn,p=theta0)
+   theta<-out$estimate}  #parameter estimates
+MLCboot<-boot(MLC, MLCfit, R=25000, theta0=c(G0, G1)) #25000 replicates
+CovTheta<-cov(MLCboot$t)
+SE<-sqrt(diag(CovTheta)) #0.7136678 0.7404902
+paste("bootstrap SE: ", SE[1], SE[2])
+#MLCboot
+#CovTheta
+#SE #0.7154191 0.7402805
+
+plot(MLCboot,index=1)  #index=i calculates results for ith parameter
+plot(MLCboot,index=2) 
+
+#b.) c.) 
+
+Crude_basic_CI_p1 <- boot.ci(MLCboot,conf=c(.95),index=1,type=c("norm","basic"))
+Crude_basic_CI_p2 <- boot.ci(MLCboot,conf=c(.95),index=2,type=c("norm","basic"))
+
+print(Crude_basic_CI_p1)
+print(Crude_basic_CI_p2)
+#Level     Normal(crude)   Basic(reflective)
+#G0 95%   (26.83, 29.63 )   (27.03, 29.87 )  
+#G1 95%   (11.19, 14.09 )   (11.17, 14.13 ) 
+
+
+```
+
+4d) The CI's are similar. For the G0 estimate the Crude CI is slightly wider, whereas for the G1 the two CI's are almost the same.
+The G0 histogram looks a little more skewed and the left tail of the qq plot is deviating further from the line.
+Crude CI works best when the data is symmetric and centered. Thus, the basic/reflective CI is better for G0 because of the skewness. 
+
+```{r p5, echo=FALSE, fig.cap="Q1", out.width = '100%'}
+#Question 5
+knitr::include_graphics("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/Q5.png")
+```
+
+
+```{r}
+#Problem 5
+#a.)
+#recalculate bootstrap with given x parameter 
+set.seed(123)
+MLC <- velocity
+MLCfit<-function(Z,i,theta0, x_pred) {
+   Zboot<-Z[i,]
+   x<-Zboot[[2]];y<-Zboot[[1]]
+   fn <- function(p) {yhat<-(p[1]*x)/(p[2]+x); sum((y-yhat)^2)}  #training your model on so use a generic x
+   out<-nlm(fn,p=theta0) #model that you are going to fit 
+   theta<-out$estimate  #optimal parameter estimates
+   y_pred<- (theta[1]*x_pred)/(theta[2]+x_pred)} #predicted response using optimal estimate on the same model
+
+MLCboot<-boot(MLC, MLCfit, R=25000, theta0=c(G0, G1), x_pred=c(27)) #run everything R times
+
+
+#simplier PI
+Yhat0 <- MLCboot$t0 #19.773 
+Yhatboot <- MLCboot$t
+MSE #0.2688919
+SEY<-sqrt(var(Yhatboot)+MSE)
+cat("PI :", c(Yhat0-qnorm(.975)*SEY, Yhat0+qnorm(.975)*SEY)) #simpler PI: #18.10111 20.29230
+#CI 
+boot.ci(MLCboot,conf=c(.95),type=c("norm","basic"), x=27)
+#Level      Normal              Basic         
+#95%   (18.83, 19.63 )   (18.91, 19.72 )  
+
+```
+
+5) PI should be better because in the real world we have to estimate considering error, not just the CI on the parameter estimate.
+
+```{r p6, echo=FALSE, fig.cap="Q1", out.width = '100%'}
+#Question 6
+knitr::include_graphics("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/Q6.png")
+```
+
+
+```{r}
+#Problem 6 AIC()
+
+library(boot)
+n<-nrow(velocity) 
+AIC_linear<- -2*as.numeric(logLik(out2))/n+2*2/n #1.628871
+paste("AIC linear model: ", AIC_linear)
+
+#alternate model
+velocity$sqrt <- sqrt(velocity$x)
+View(velocity)
+library(boot)
+n_alternate<-nrow(velocity) 
+velocity_alternate.fit<-lm(velocity$y ~ velocity$sqrt, data=velocity)
+summary(velocity_alternate.fit) 
+AIC<- -2*as.numeric(logLik(velocity_alternate.fit))/n_alternate+2*2/n_alternate
+paste("AIC alternate modeL: ", AIC) #2.836148
+
+#---#
+#check AIC value
+AIC1<-AIC(out2)/n #1.739982
+AIC2 <- AIC(velocity_alternate.fit)/n_alternate #2.947259
+#----#
+
+```
+
+6) The original model is better because we want to minimize AIC 
+
+```{r p7, echo=FALSE, fig.cap="Q1", out.width = '100%'}
+#Question 7
+knitr::include_graphics("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/Q7.png")
+```
+
+```{r, results="hide"}
+#Problem 7 - cross fold validation
+
+velocity <- read.csv("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/HW1data.csv", stringsAsFactors = FALSE)
+velocity <- velocity[,-c(3,4,5)]
+
+#randomly assign to group for cv validation - create indicies 
+new_velocity <- velocity
+new_velocity$x <- sqrt(new_velocity$x)
+
+CVInd <- function(n,K) {  #n is sample size; K is number of parts; returns K-length list of indices for each part
+ m<-floor(n/K)  #approximate size of each part
+ r<-n-m*K
+ I<-sample(n,n)  #random reordering of the indices
+ Ind<-list()  #will be list of indices for all K parts
+ length(Ind)<-K
+ for (k in 1:K) {
+    if (k <= r) kpart <- ((m+1)*(k-1)+1):((m+1)*k)
+       else kpart<-((m+1)*r+m*(k-r-1)+1):((m+1)*r+m*(k-r))
+    Ind[[k]] <- I[kpart]  #indices for kth part of data
+ }
+ Ind
+}
+
+fn_nls <- function(x,p) {((p[1]*x)/(p[2] + x))}
+Nrep<-20 #number of replicates of CV
+n=nrow(new_velocity)
+K<-n  #n-fold CV on each replicate
+n.models = 2 #number of different models to fit and compare
+y<-velocity$y
+yhat=matrix(0,n,n.models)
+MSE<-matrix(0,Nrep,n.models)
+for (j in 1:Nrep) {
+  Ind<-CVInd(n,K)
+for (k in 1:K) {
+   out<-lm(y~.,new_velocity[-Ind[[k]],]) #alternate model linear model
+   yhat[Ind[[k]],1]<-as.numeric(predict(out,new_velocity[Ind[[k]],]))
+   
+   out<-nls(y ~ fn_nls(x,p),data=velocity[-Ind[[k]],],start = list(p = c(G0,G1)),trace = TRUE) #original nls model
+   yhat[Ind[[k]],2]<-as.numeric(predict(out,velocity[Ind[[k]],]))
+
+} #end of k loop
+MSE[j,]=apply(yhat,2,function(x) sum((y-x)^2))/n
+} #end of j loop
+
+```
+
+```{r}
+#MSE
+MSEAvg<- apply(MSE,2,mean); 
+paste("MSEAvg : ",MSEAvg[1], MSEAvg[2] )
+#MSEAvg
+#alternate nls
+#0.7731475 0.2943015
+r2<-1-MSEAvg/var(y); r2  #CV 
+paste("R^2 : ",r2[1], r2[2] )
+#r^2 
+#0.9802639 0.9924874
+```
+
+nls has lower MSE and higher R^2, making it the better model.
+
+```{r p8, echo=FALSE, fig.cap="Q1", out.width = '100%'}
+#Question 8
+knitr::include_graphics("~/Desktop/MSiA Winter Quarter 2018/Predictive Analytics 2/Homework/Q8.png")
+```
+
+
+```{r}
+#Problem 8 - construct residuals vs x for problem 6 and 7
+#linear model 
+plot(velocity$x, resid(velocity_alternate.fit))
+
+#nlm model nls
+plot(velocity$x,resid(out2))
+```
+The linear model does not look randomly distributed, but the residuals in the non linear model look random.
+
